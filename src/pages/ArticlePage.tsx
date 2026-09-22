@@ -12,7 +12,7 @@ import { ArticleSchema, BreadcrumbSchema } from "@/components/seo/StructuredData
 import { Clock, Calendar, Eye, ChevronRight, Languages } from "lucide-react";
 import { usePublicArticleById, useLatestArticles } from "@/hooks/usePublicArticles";
 import { useReadingAnalytics } from "@/hooks/useReadingAnalytics";
-import { getCurrentLanguage, translateTo } from "@/components/GoogleTranslate";
+import { getCurrentLanguage, translateTo, triggerTranslateForDynamicContent } from "@/components/GoogleTranslate";
 
 const formatDate = (dateString: string | null) => {
   if (!dateString) return '';

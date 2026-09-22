@@ -20,7 +20,7 @@ export const HTML_TEMPLATE = `<!DOCTYPE html>
     <!-- Fonts: load without blocking first paint (display=swap avoids invisible text) -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Red+Hat+Display:wght@500;600;700;800;900&family=Roboto:wght@400;500;700&family=Playfair+Display:wght@600;700;800&display=swap" media="print" onload="this.media='all'" />
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Red+Hat+Display:wght@500;600;700;800;900&family=Roboto:wght@400;500;700&family=Playfair+Display:wght@600;700;800&display=swap" /></noscript>
-    <script type="module" crossorigin src="/assets/index-BeYYu4DW.js"></script>
+    <script type="module" crossorigin src="/assets/index-BrFGMIei.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-70c-yqck.js">
     <link rel="modulepreload" crossorigin href="/assets/react-dom-KswWkzBK.js">
     <link rel="modulepreload" crossorigin href="/assets/dist-Vjo1rhre.js">
