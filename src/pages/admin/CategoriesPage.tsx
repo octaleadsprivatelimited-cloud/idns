@@ -1,0 +1,466 @@
+import { useState, useEffect } from 'react';
+import AdminLayout from '@/components/admin/AdminLayout';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Switch } from '@/components/ui/switch';
+import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from '@/hooks/useCategories';
+import { useCategoryDisplayOrder, useUpdateCategoryDisplayOrder } from '@/hooks/useCategoryDisplayOrder';
+import { Plus, Edit, Trash, Loader2, ArrowUp, ArrowDown, Save } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ImageUpload } from '@/components/admin/ImageUpload';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+
+const generateSlug = (name: string): string => {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
+};
+
+const CategoriesPage = () => {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingCategory, setEditingCategory] = useState<any>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    slug: '',
+    description: '',
+    color: '#6366f1',
+    is_active: true,
+    sort_order: 0,
+    image_url: '',
+  });
+
+  const { data: categories = [], isLoading } = useCategories();
+  const { data: displayOrder = [] } = useCategoryDisplayOrder();
+  const updateDisplayOrder = useUpdateCategoryDisplayOrder();
+  const createCategory = useCreateCategory();
+  const updateCategory = useUpdateCategory();
+  const deleteCategory = useDeleteCategory();
+  const { toast } = useToast();
+
+  // Order for header & homepage: merge saved order with any categories not in it
+  const orderedCategories = (() => {
+    if (!categories.length) return [];
+    const order = [...displayOrder];
+    for (const c of categories) {
+      if (!order.includes(c.id)) order.push(c.id);
+    }
+    return order
+      .map((id) => categories.find((c) => c.id === id))
+      .filter(Boolean) as typeof categories;
+  })();
+
+  const [displayOrderDraft, setDisplayOrderDraft] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (orderedCategories.length) {
+      setDisplayOrderDraft(orderedCategories.map((c) => c.id));
+    }
+  }, [displayOrder.join(','), categories.length]);
+
+  const moveDisplayOrder = (index: number, direction: 'up' | 'down') => {
+    const next = [...displayOrderDraft];
+    const swap = direction === 'up' ? index - 1 : index + 1;
+    if (swap < 0 || swap >= next.length) return;
+    [next[index], next[swap]] = [next[swap], next[index]];
+    setDisplayOrderDraft(next);
+  };
+
+  const saveDisplayOrder = async () => {
+    try {
+      await updateDisplayOrder.mutateAsync(displayOrderDraft);
+      toast({ title: 'Display order saved. Header and homepage will use this order.' });
+    } catch (e: any) {
+      toast({ title: 'Failed to save order', description: e?.message, variant: 'destructive' });
+    }
+  };
+
+  const openNewDialog = () => {
+    setEditingCategory(null);
+    setFormData({
+      name: '',
+      slug: '',
+      description: '',
+      color: '#6366f1',
+      is_active: true,
+      sort_order: categories?.length || 0,
+      image_url: '',
+    });
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (category: any) => {
+    setEditingCategory(category);
+    setFormData({
+      name: category.name,
+      slug: category.slug,
+      description: category.description || '',
+      color: category.color || '#6366f1',
+      is_active: category.is_active ?? true,
+      sort_order: category.sort_order || 0,
+      image_url: category.image_url || '',
+    });
+    setDialogOpen(true);
+  };
+
+  const handleNameChange = (name: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      name,
+      slug: !editingCategory ? generateSlug(name) : prev.slug,
+    }));
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.name || !formData.slug) {
+      toast({ title: 'Please fill in required fields', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      if (editingCategory) {
+        await updateCategory.mutateAsync({ id: editingCategory.id, ...formData });
+        toast({ title: 'Category updated successfully' });
+      } else {
+        await createCategory.mutateAsync(formData);
+        toast({ title: 'Category created successfully' });
+      }
+      setDialogOpen(false);
+    } catch (error: any) {
+      toast({ title: 'Error saving category', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+
+    try {
+      await deleteCategory.mutateAsync(deleteId);
+      toast({ title: 'Category deleted successfully' });
+    } catch (error: any) {
+      toast({ title: 'Error deleting category', description: error.message, variant: 'destructive' });
+    }
+    setDeleteId(null);
+  };
+
+  return (
+    <AdminLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Categories</h1>
+            <p className="text-muted-foreground">Manage article categories</p>
+          </div>
+          <Button onClick={openNewDialog}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Category
+          </Button>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Display order (header &amp; homepage)</CardTitle>
+            <CardDescription>
+              Drag order below is used in the site header and on the homepage. Use Move up/down then Save.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!orderedCategories.length ? (
+              <p className="text-sm text-muted-foreground">Add categories above first.</p>
+            ) : (
+              <div className="space-y-2">
+                {displayOrderDraft.map((id, index) => {
+                  const cat = categories.find((c) => c.id === id);
+                  if (!cat) return null;
+                  return (
+                    <div
+                      key={id}
+                      className="flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2"
+                    >
+                      <span className="font-medium">{cat.name}</span>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => moveDisplayOrder(index, 'up')}
+                          disabled={index === 0}
+                          aria-label="Move up"
+                        >
+                          <ArrowUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => moveDisplayOrder(index, 'down')}
+                          disabled={index === displayOrderDraft.length - 1}
+                          aria-label="Move down"
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <Button
+                  onClick={saveDisplayOrder}
+                  disabled={updateDisplayOrder.isPending}
+                  className="mt-2"
+                >
+                  {updateDisplayOrder.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  <Save className="h-4 w-4 mr-2" />
+                  Save display order
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Color</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead>Active</TableHead>
+                <TableHead>Order</TableHead>
+                <TableHead className="w-[100px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                [...Array(5)].map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton className="h-6 w-6 rounded-full" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  </TableRow>
+                ))
+              ) : categories?.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    No categories found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                categories?.map((category) => (
+                  <TableRow key={category.id}>
+                    <TableCell>
+                      <div
+                        className="h-6 w-6 rounded-full border"
+                        style={{ backgroundColor: category.color || '#6366f1' }}
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium">{category.name}</TableCell>
+                    <TableCell className="text-muted-foreground">{category.slug}</TableCell>
+                    <TableCell>
+                      {category.is_active ? (
+                        <span className="text-green-600">Active</span>
+                      ) : (
+                        <span className="text-muted-foreground">Inactive</span>
+                      )}
+                    </TableCell>
+                    <TableCell>{category.sort_order}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEditDialog(category)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteId(category.id)}
+                        >
+                          <Trash className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
+            <DialogTitle>
+              {editingCategory ? 'Edit Category' : 'New Category'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingCategory ? 'Update category details' : 'Create a new category'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4 overflow-y-auto min-h-0 flex-1">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name *</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                placeholder="Category name"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="slug">Slug *</Label>
+              <Input
+                id="slug"
+                value={formData.slug}
+                onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+                placeholder="category-slug"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Category image (homepage card)</Label>
+              <ImageUpload
+                value={formData.image_url || undefined}
+                onChange={(url) => setFormData((prev) => ({ ...prev, image_url: url }))}
+                folder="categories"
+                aspectRatio="square"
+                className="max-h-40"
+              />
+              <p className="text-xs text-muted-foreground">Or paste URL below</p>
+              <Input
+                id="image_url"
+                type="url"
+                value={formData.image_url}
+                onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                placeholder="https://…"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Category description"
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="color">Color</Label>
+              <div className="flex gap-2">
+                <input
+                  type="color"
+                  id="color"
+                  value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  className="h-10 w-14 rounded border cursor-pointer"
+                />
+                <Input
+                  value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  placeholder="#6366f1"
+                  className="flex-1"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="sort_order">Sort Order</Label>
+              <Input
+                id="sort_order"
+                type="number"
+                value={formData.sort_order}
+                onChange={(e) => setFormData({ ...formData, sort_order: parseInt(e.target.value) || 0 })}
+              />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="is_active"
+                checked={formData.is_active}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+              />
+              <Label htmlFor="is_active">Active</Label>
+            </div>
+          </div>
+
+          <DialogFooter className="shrink-0 pt-4 border-t">
+            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={createCategory.isPending || updateCategory.isPending}
+            >
+              {(createCategory.isPending || updateCategory.isPending) && (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              )}
+              {editingCategory ? 'Update' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Category</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this category? Articles in this category will become uncategorized.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </AdminLayout>
+  );
+};
+
+export default CategoriesPage;

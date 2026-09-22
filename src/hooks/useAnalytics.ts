@@ -1,0 +1,124 @@
+import { useQuery } from '@tanstack/react-query';
+import { collection, query, getDocs, where, orderBy, limit as firestoreLimit, Timestamp } from 'firebase/firestore';
+import { db } from '@/integrations/firebase/client';
+import { format, subDays, startOfDay } from 'date-fns';
+
+/** Build daily views for last 7 days from reading_analytics (works after deployment). */
+async function fetchDailyViews(): Promise<{ name: string; views: number }[]> {
+  const now = new Date();
+  const start = startOfDay(subDays(now, 6));
+  const startTimestamp = Timestamp.fromDate(start);
+
+  const q = query(
+    collection(db, 'reading_analytics'),
+    where('created_at', '>=', startTimestamp)
+  );
+  const snapshot = await getDocs(q);
+
+  const countsByDay: Record<string, number> = {};
+  for (let i = 0; i < 7; i++) {
+    const d = startOfDay(subDays(now, 6 - i));
+    countsByDay[format(d, 'yyyy-MM-dd')] = 0;
+  }
+
+  snapshot.docs.forEach((docSnap) => {
+    const data = docSnap.data();
+    const createdAt = data.created_at;
+    const date = createdAt?.toDate?.() ?? (createdAt ? new Date(createdAt) : null);
+    if (date) {
+      const key = format(date, 'yyyy-MM-dd');
+      if (countsByDay[key] !== undefined) countsByDay[key]++;
+    }
+  });
+
+  return Object.keys(countsByDay)
+    .sort()
+    .map((key) => ({
+      name: format(new Date(key), 'EEE d'),
+      views: countsByDay[key],
+    }));
+}
+
+export const useAnalytics = () => {
+  return useQuery({
+    queryKey: ['analytics'],
+    queryFn: async () => {
+      // Get all articles
+      const articlesSnapshot = await getDocs(collection(db, 'articles'));
+      const articles = articlesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      const totalArticles = articles.length;
+      const publishedArticles = articles.filter(a => a.status === 'published').length;
+      const draftArticles = articles.filter(a => a.status === 'draft').length;
+      const totalViews = articles.reduce((sum, a) => sum + (a.view_count || 0), 0);
+
+      // Get category count
+      const categoriesSnapshot = await getDocs(collection(db, 'categories'));
+      const categoryCount = categoriesSnapshot.size;
+
+      // Get subscriber count
+      const subscribersQuery = query(
+        collection(db, 'newsletter_subscribers'),
+        where('is_active', '==', true)
+      );
+      const subscribersSnapshot = await getDocs(subscribersQuery);
+      const subscriberCount = subscribersSnapshot.size;
+
+      // Daily views for last 7 days (from reading_analytics)
+      let dailyViews: { name: string; views: number }[] = [];
+      try {
+        dailyViews = await fetchDailyViews();
+      } catch (e) {
+        console.warn('Daily views fetch failed:', e);
+      }
+
+      // Get recent articles
+      const recentArticlesQuery = query(
+        collection(db, 'articles'),
+        orderBy('created_at', 'desc'),
+        firestoreLimit(5)
+      );
+      const recentSnapshot = await getDocs(recentArticlesQuery);
+      const recentArticles = [];
+
+      for (const docSnapshot of recentSnapshot.docs) {
+        const data = docSnapshot.data();
+        let categoryName = null;
+        
+        if (data.category_id) {
+          try {
+            const { doc, getDoc } = await import('firebase/firestore');
+            const categoryDoc = await getDoc(doc(db, 'categories', data.category_id));
+            if (categoryDoc.exists()) {
+              categoryName = categoryDoc.data().name;
+            }
+          } catch (error) {
+            console.error('Error fetching category:', error);
+          }
+        }
+
+        recentArticles.push({
+          id: docSnapshot.id,
+          title: data.title,
+          slug: data.slug,
+          status: data.status,
+          view_count: data.view_count,
+          created_at: data.created_at?.toDate?.()?.toISOString() || data.created_at,
+          category: categoryName ? { name: categoryName } : null,
+        });
+      }
+
+      return {
+        totalArticles,
+        publishedArticles,
+        draftArticles,
+        totalViews,
+        categoryCount,
+        subscriberCount,
+        recentArticles,
+        dailyViews,
+      };
+    },
+    refetchInterval: 15_000, // live view counts on dashboard
+  });
+};

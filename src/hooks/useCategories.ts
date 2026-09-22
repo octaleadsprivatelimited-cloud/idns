@@ -1,0 +1,207 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { 
+  collection, 
+  query, 
+  getDocs, 
+  getDoc, 
+  doc, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc,
+  where,
+  orderBy,
+  Timestamp
+} from 'firebase/firestore';
+import { db } from '@/integrations/firebase/client';
+
+interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  is_active?: boolean | null;
+  sort_order?: number | null;
+  /** Background/cover image URL for category cards (stored in database) */
+  image_url?: string | null;
+  /** Alternative field name some DBs use */
+  image?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface CategoryInsert {
+  name: string;
+  slug: string;
+  description?: string | null;
+  is_active?: boolean | null;
+  sort_order?: number | null;
+  image_url?: string | null;
+}
+
+interface CategoryUpdate extends Partial<CategoryInsert> {
+  id: string;
+}
+
+// Helper to convert Firestore timestamp to ISO string
+const convertTimestamp = (timestamp: any): string | null => {
+  if (!timestamp) return null;
+  if (timestamp instanceof Timestamp) {
+    return timestamp.toDate().toISOString();
+  }
+  if (timestamp?.toDate) {
+    return timestamp.toDate().toISOString();
+  }
+  return timestamp;
+};
+
+import { DEMO_CATEGORIES } from '@/data/demoNewsData';
+
+export const useCategories = () => {
+  return useQuery({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      if (!db) {
+        return DEMO_CATEGORIES;
+      }
+
+      try {
+        // Try query with orderBy first
+        const categoriesQuery = query(
+          collection(db, 'categories'),
+          where('is_active', '==', true),
+          orderBy('sort_order', 'asc')
+        );
+
+        const snapshot = await getDocs(categoriesQuery);
+        if (snapshot.empty) {
+          return DEMO_CATEGORIES;
+        }
+
+        const categories: Category[] = [];
+
+        snapshot.docs.forEach((docSnapshot) => {
+          const data = docSnapshot.data();
+          categories.push({
+            id: docSnapshot.id,
+            ...data,
+            created_at: convertTimestamp(data.created_at),
+            updated_at: convertTimestamp(data.updated_at),
+          } as Category);
+        });
+
+        // Newest first (admin-created categories show first)
+        categories.sort((a, b) => {
+          const aTime = a.created_at || '';
+          const bTime = b.created_at || '';
+          return bTime.localeCompare(aTime);
+        });
+
+        return categories.length > 0 ? categories : DEMO_CATEGORIES;
+      } catch (error: any) {
+        return DEMO_CATEGORIES;
+      }
+    },
+    retry: 1,
+    staleTime: 5 * 60 * 1000, // 5 min cache; invalidated on create/update/delete in admin
+    refetchOnWindowFocus: false, // Rely on cache for faster repeat visits; admin invalidates when needed
+  });
+};
+
+export const useCategory = (id: string) => {
+  return useQuery({
+    queryKey: ['category', id],
+    queryFn: async () => {
+      const categoryDoc = await getDoc(doc(db, 'categories', id));
+      
+      if (!categoryDoc.exists()) {
+        return null;
+      }
+
+      const data = categoryDoc.data();
+      return {
+        id: categoryDoc.id,
+        ...data,
+        created_at: convertTimestamp(data.created_at),
+        updated_at: convertTimestamp(data.updated_at),
+      } as Category;
+    },
+    enabled: !!id,
+  });
+};
+
+export const useCreateCategory = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (category: CategoryInsert) => {
+      const categoryData = {
+        ...category,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      };
+      
+      const docRef = await addDoc(collection(db, 'categories'), categoryData);
+      const newDoc = await getDoc(docRef);
+      
+      if (!newDoc.exists()) {
+        throw new Error('Failed to create category');
+      }
+
+      const data = newDoc.data();
+      return {
+        id: newDoc.id,
+        ...data,
+        created_at: convertTimestamp(data.created_at),
+        updated_at: convertTimestamp(data.updated_at),
+      } as Category;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+    },
+  });
+};
+
+export const useUpdateCategory = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...category }: CategoryUpdate) => {
+      const categoryData = {
+        ...category,
+        updated_at: Timestamp.now(),
+      };
+      
+      await updateDoc(doc(db, 'categories', id), categoryData);
+      
+      const updatedDoc = await getDoc(doc(db, 'categories', id));
+      if (!updatedDoc.exists()) {
+        throw new Error('Failed to update category');
+      }
+
+      const data = updatedDoc.data();
+      return {
+        id: updatedDoc.id,
+        ...data,
+        created_at: convertTimestamp(data.created_at),
+        updated_at: convertTimestamp(data.updated_at),
+      } as Category;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['category', data.id] });
+    },
+  });
+};
+
+export const useDeleteCategory = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await deleteDoc(doc(db, 'categories', id));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+    },
+  });
+};
