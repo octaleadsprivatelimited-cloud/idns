@@ -12,12 +12,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as admin from 'firebase-admin';
 
-const SITE_URL = process.env.VITE_SITE_URL || process.env.SITE_URL || 'https://9knowledge.com';
-const SITE_TITLE = '9knowledge';
+const SITE_URL = process.env.VITE_SITE_URL || process.env.SITE_URL || 'https://idnsnews.com';
+const SITE_TITLE = 'I D N S';
 const SITE_DESCRIPTION =
-  'Your Trusted Source for News & Insights';
+  'Independent Affairs News Spectrum - Breaking News, India News, World & Live Updates';
 const SITE_DESCRIPTION_SHORT =
-  '9knowledge delivers insightful articles on technology, health, business, science, and more.';
+  'I D N S delivers breaking news, analytics, politics, tech, entertainment, business, and expert opinions.';
 const DEFAULT_OG_IMAGE =
   'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1200&h=630&fit=crop';
 const OG_IMAGE_WIDTH = '1200';
