@@ -10,7 +10,8 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import * as admin from 'firebase-admin';
+import { initializeApp, getApps, cert, type Credential, type ServiceAccount } from 'firebase-admin/app';
+import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 
 const SITE_URL = process.env.VITE_SITE_URL || process.env.SITE_URL || 'https://idnsnews.com';
 const SITE_TITLE = 'I D N S';
@@ -19,24 +20,24 @@ const DEFAULT_OG_IMAGE = 'https://images.unsplash.com/photo-1677442136019-21780e
 const OG_IMAGE_WIDTH = '1200';
 const OG_IMAGE_HEIGHT = '630';
 
-function getAdminFirestore(): admin.firestore.Firestore | null {
-  if (!admin.apps.length) {
+function getAdminFirestore(): Firestore | null {
+  if (!getApps().length) {
     const cred = getCredentials();
     if (cred) {
-      admin.initializeApp({ credential: cred });
+      initializeApp({ credential: cred });
     } else {
       return null;
     }
   }
-  return admin.firestore();
+  return getFirestore();
 }
 
-function getCredentials(): admin.credential.Credential | null {
+function getCredentials(): Credential | null {
   const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (json && json.trim()) {
     try {
       const parsed = JSON.parse(json) as Record<string, unknown>;
-      return admin.credential.cert(parsed as admin.ServiceAccount);
+      return cert(parsed as ServiceAccount);
     } catch (_) {
       return null;
     }
@@ -45,11 +46,11 @@ function getCredentials(): admin.credential.Credential | null {
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
   if (projectId && clientEmail && privateKey) {
-    return admin.credential.cert({
+    return cert({
       projectId,
       clientEmail,
       privateKey,
-    } as admin.ServiceAccount);
+    } as ServiceAccount);
   }
   return null;
 }
